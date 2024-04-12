@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::{collections::HashMap, env, path::PathBuf};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 
@@ -27,6 +27,7 @@ struct Request {
     path: String,
     headers: std::collections::HashMap<String, String>,
     method: Method,
+    body: Vec<u8>,
 }
 
 impl Request {
@@ -38,9 +39,11 @@ impl Request {
             .collect_tuple()
             .expect("invalid first HTTP line");
 
+        let method: Method = method.into();
         let mut headers = HashMap::new();
         let mut line = String::new();
 
+        // headers
         while let Ok(n) = buff.read_line(&mut line).await {
             if n == 0 {
                 break;
@@ -54,10 +57,23 @@ impl Request {
             line.clear();
         }
 
+        // body
+        let mut body: Vec<u8> = Vec::new();
+        if method == Method::Post || method == Method::Put {
+            let payload_size = headers
+                .get("Content-Length")
+                .map_or(0, |x| x.parse::<usize>().unwrap_or(0));
+
+            body = vec![0; payload_size];
+            let n = buff.read_exact(&mut body).await?;
+            anyhow::ensure!(n == payload_size, "invalid body size");
+        }
+
         Ok(Self {
             path: path.into(),
             headers,
-            method: method.into(),
+            method,
+            body,
         })
     }
 }
