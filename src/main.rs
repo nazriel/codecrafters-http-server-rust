@@ -1,13 +1,49 @@
+use itertools::Itertools;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 
+enum Method {
+    Get,
+}
+
+impl std::convert::From<&str> for Method {
+    fn from(input: &str) -> Self {
+        match input.to_lowercase().as_str() {
+            "get" => Method::Get,
+            _ => Method::Get,
+        }
+    }
+}
+
+struct Request {
+    path: String,
+}
+
+impl Request {
+    async fn parse(buff: &mut BufReader<&mut TcpStream>) -> anyhow::Result<Self> {
+        let mut line = String::new();
+        buff.read_line(&mut line).await?;
+        let (_method, path, _version) = line
+            .split_whitespace()
+            .collect_tuple()
+            .expect("invalid first HTTP line");
+        Ok(Self { path: path.into() })
+    }
+}
+
 async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
     println!("accepted new connection");
-    let mut b = [0u8; 1024];
-    let _ = stream.read(&mut b).await?;
-    stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+
+    let mut b = BufReader::new(&mut stream);
+    let req = Request::parse(&mut b).await?;
+
+    if req.path == "/" {
+        stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+    } else {
+        stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").await?;
+    }
 
     Ok(())
 }
@@ -23,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
                 tokio::spawn(async move { handle_connection(stream).await });
             }
             Err(e) => {
-                println!("error: {}", e);
+                eprintln!("error: {}", e);
                 break;
             }
         }
