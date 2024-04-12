@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use std::collections::HashMap;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
@@ -19,6 +20,7 @@ impl std::convert::From<&str> for Method {
 
 struct Request {
     path: String,
+    headers: std::collections::HashMap<String, String>,
 }
 
 impl Request {
@@ -29,7 +31,27 @@ impl Request {
             .split_whitespace()
             .collect_tuple()
             .expect("invalid first HTTP line");
-        Ok(Self { path: path.into() })
+
+        let mut headers = HashMap::new();
+        let mut line = String::new();
+
+        while let Ok(n) = buff.read_line(&mut line).await {
+            if n == 0 {
+                break;
+            }
+            if line == "\r\n" {
+                break;
+            }
+            let (hname, hvalue) = line.split_once(": ").expect("invalid header line");
+            let hvalue = hvalue.trim();
+            headers.insert(hname.to_string(), hvalue.to_string());
+            line.clear();
+        }
+
+        Ok(Self {
+            path: path.into(),
+            headers,
+        })
     }
 }
 
