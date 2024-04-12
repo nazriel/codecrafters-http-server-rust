@@ -96,9 +96,10 @@ impl<'a> Response<'a> {
     async fn send(&mut self) -> anyhow::Result<()> {
         let status_text = match self.status {
             200 => "200 OK",
+            400 => "400 Bad Request",
             404 => "404 Not Found",
             500 => "500 Internal Server Error",
-            _ => "500 Internal Server Error",
+            _ => panic!("Unknown status code"),
         };
         self.stream
             .write_all(format!("HTTP/1.1 {status_text}\r\n").as_bytes())
@@ -164,25 +165,29 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
             "{}/{entity}",
             config.static_files.unwrap().to_str().unwrap()
         );
-        if !tokio::fs::try_exists(&fpath).await? {
-            return Response::new(&mut stream).status(404).send().await;
-        }
-        match tokio::fs::read_to_string(fpath).await {
-            Ok(body) => {
-                return Response::new(&mut stream)
-                    .status(200)
-                    .header("Content-Type", "application/octet-stream")
-                    .body(&body)
-                    .send()
-                    .await;
+        if req.method == Method::Get {
+            if !tokio::fs::try_exists(&fpath).await? {
+                return Response::new(&mut stream).status(404).send().await;
             }
-            Err(err) => {
-                return Response::new(&mut stream)
-                    .status(500)
-                    .body(format!("failed to read file: {err}").as_str())
-                    .send()
-                    .await;
+            match tokio::fs::read_to_string(&fpath).await {
+                Ok(body) => {
+                    return Response::new(&mut stream)
+                        .status(200)
+                        .header("Content-Type", "application/octet-stream")
+                        .body(&body)
+                        .send()
+                        .await;
+                }
+                Err(err) => {
+                    return Response::new(&mut stream)
+                        .status(500)
+                        .body(format!("failed to read file: {err}").as_str())
+                        .send()
+                        .await;
+                }
             }
+        } else {
+            return Response::new(&mut stream).status(400).send().await;
         }
     } else {
         Response::new(&mut stream).status(404).send().await?;
