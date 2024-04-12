@@ -123,6 +123,15 @@ async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 
     if req.path == "/" {
         Response::new(&mut stream).status(200).send().await?;
+    } else if req.path == "/user-agent" {
+        let ua = req.headers.get("User-Agent").cloned().unwrap_or_default();
+
+        Response::new(&mut stream)
+            .status(200)
+            .header("Content-Type", "text/plain")
+            .body(&ua)
+            .send()
+            .await?;
     } else if req.path.starts_with("/echo/") {
         let payload = req
             .path
