@@ -112,6 +112,7 @@ impl<'a> Response<'a> {
     async fn send(&mut self) -> anyhow::Result<()> {
         let status_text = match self.status {
             200 => "200 OK",
+            201 => "201 Created",
             400 => "400 Bad Request",
             404 => "404 Not Found",
             500 => "500 Internal Server Error",
@@ -202,6 +203,9 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
                         .await;
                 }
             }
+        } else if req.method == Method::Post {
+            tokio::fs::write(fpath, req.body).await?;
+            return Response::new(&mut stream).status(201).send().await;
         } else {
             return Response::new(&mut stream).status(400).send().await;
         }
