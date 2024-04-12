@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::{collections::HashMap, env, path::PathBuf};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
@@ -115,7 +115,7 @@ impl<'a> Response<'a> {
     }
 }
 
-async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
+async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Result<()> {
     println!("accepted new connection");
 
     let mut b = BufReader::new(&mut stream);
@@ -151,15 +151,36 @@ async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Debug)]
+struct Config {
+    address: String,
+    port: u16,
+    static_files: Option<PathBuf>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:4221").await?;
+    let mut config = Config {
+        address: "127.0.0.1".into(),
+        port: 4221,
+        static_files: None,
+    };
+    let listener = TcpListener::bind(format!("{}:{}", config.address, config.port)).await?;
+    let mut it = env::args_os();
+    while let Some(arg) = it.next() {
+        if arg == "--directory" {
+            config.static_files = it.next().map(|x| x.into());
+        }
+    }
+
+    println!("Running with following config: {:?}", &config);
 
     loop {
         let conn = listener.accept().await;
         match conn {
             Ok((stream, _)) => {
-                tokio::spawn(async move { handle_connection(stream).await });
+                let cfg = config.clone();
+                tokio::spawn(async move { handle_connection(stream, cfg).await });
             }
             Err(e) => {
                 eprintln!("error: {}", e);
