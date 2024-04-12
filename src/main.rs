@@ -144,6 +144,39 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
             .body(payload)
             .send()
             .await?;
+    } else if req.path.starts_with("/files/") {
+        if config.static_files.is_none() {
+            return Response::new(&mut stream).status(404).send().await;
+        }
+        let entity = req
+            .path
+            .strip_prefix("/files/")
+            .expect("some entity path should exist");
+
+        let fpath = format!(
+            "{}/{entity}",
+            config.static_files.unwrap().to_str().unwrap()
+        );
+        if !tokio::fs::try_exists(&fpath).await? {
+            return Response::new(&mut stream).status(404).send().await;
+        }
+        match tokio::fs::read_to_string(fpath).await {
+            Ok(body) => {
+                return Response::new(&mut stream)
+                    .status(200)
+                    .header("Content-Type", "application/octet-stream")
+                    .body(&body)
+                    .send()
+                    .await;
+            }
+            Err(err) => {
+                return Response::new(&mut stream)
+                    .status(500)
+                    .body(format!("failed to read file: {err}").as_str())
+                    .send()
+                    .await;
+            }
+        }
     } else {
         Response::new(&mut stream).status(404).send().await?;
     }
