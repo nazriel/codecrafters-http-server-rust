@@ -41,6 +41,19 @@ async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 
     if req.path == "/" {
         stream.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await?;
+    } else if req.path.starts_with("/echo/") {
+        let payload = req
+            .path
+            .strip_prefix("/echo/")
+            .expect("some payload should exist");
+
+        stream.write_all(b"HTTP/1.1 200 OK\r\n").await?;
+        stream.write_all(b"Content-Type: text/plain\r\n").await?;
+        stream
+            .write_all(format!("Content-Length: {}\r\n\r\n", payload.len()).as_bytes())
+            .await?;
+
+        stream.write_all(payload.as_bytes()).await?;
     } else {
         stream.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").await?;
     }
