@@ -5,15 +5,20 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
+#[derive(PartialEq)]
 enum Method {
     Get,
+    Post,
+    Put,
 }
 
 impl std::convert::From<&str> for Method {
     fn from(input: &str) -> Self {
         match input.to_lowercase().as_str() {
             "get" => Method::Get,
-            _ => Method::Get,
+            "post" => Method::Post,
+            "put" => Method::Put,
+            e => panic!("unknown method {e}"),
         }
     }
 }
@@ -21,13 +26,14 @@ impl std::convert::From<&str> for Method {
 struct Request {
     path: String,
     headers: std::collections::HashMap<String, String>,
+    method: Method,
 }
 
 impl Request {
     async fn parse(buff: &mut BufReader<&mut TcpStream>) -> anyhow::Result<Self> {
         let mut line = String::new();
         buff.read_line(&mut line).await?;
-        let (_method, path, _version) = line
+        let (method, path, _version) = line
             .split_whitespace()
             .collect_tuple()
             .expect("invalid first HTTP line");
@@ -51,6 +57,7 @@ impl Request {
         Ok(Self {
             path: path.into(),
             headers,
+            method: method.into(),
         })
     }
 }
