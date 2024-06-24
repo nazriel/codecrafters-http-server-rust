@@ -80,7 +80,7 @@ impl Request {
     fn supported_encodings(&self) -> Vec<&str> {
         self.headers
             .get("Accept-Encoding")
-            .map_or(Vec::new(), |x| x.split(',').collect())
+            .map_or(Vec::new(), |x| x.split(',').map(|enc| enc.trim()).collect())
     }
 }
 
