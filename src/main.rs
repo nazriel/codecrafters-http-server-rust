@@ -76,6 +76,12 @@ impl Request {
             body,
         })
     }
+
+    fn supported_encodings(&self) -> Vec<&str> {
+        self.headers
+            .get("Accept-Encoding")
+            .map_or(Vec::new(), |x| x.split(',').collect())
+    }
 }
 
 struct Response<'a> {
@@ -124,6 +130,8 @@ impl<'a> Response<'a> {
             .write_all(format!("HTTP/1.1 {status_text}\r\n").as_bytes())
             .await?;
 
+        self.append_own_headers();
+
         for (hname, hvalue) in &self.headers {
             self.stream
                 .write_all(format!("{hname}: {hvalue}\r\n").as_bytes())
@@ -139,6 +147,14 @@ impl<'a> Response<'a> {
             self.stream.write_all(b"Content-Length: 0\r\n\r\n").await?;
         }
         Ok(())
+    }
+
+    fn append_own_headers(&mut self) {
+        if self.request.supported_encodings().contains(&"gzip") {
+            self.headers
+                .entry("Content-Encoding".into())
+                .or_insert("gzip".into());
+        }
     }
 }
 
