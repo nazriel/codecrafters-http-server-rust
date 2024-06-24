@@ -83,14 +83,16 @@ struct Response<'a> {
     status: u16,
     stream: &'a mut TcpStream,
     headers: HashMap<String, String>,
+    request: &'a Request,
 }
 impl<'a> Response<'a> {
-    fn new(stream: &'a mut TcpStream) -> Self {
+    fn new(stream: &'a mut TcpStream, request: &'a Request) -> Self {
         Self {
             body: String::new(),
             status: 200,
             stream,
             headers: HashMap::new(),
+            request,
         }
     }
 
@@ -147,11 +149,11 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
     let req = Request::parse(&mut b).await?;
 
     if req.path == "/" {
-        Response::new(&mut stream).status(200).send().await?;
+        Response::new(&mut stream, &req).status(200).send().await?;
     } else if req.path == "/user-agent" {
         let ua = req.headers.get("User-Agent").cloned().unwrap_or_default();
 
-        Response::new(&mut stream)
+        Response::new(&mut stream, &req)
             .status(200)
             .header("Content-Type", "text/plain")
             .body(&ua)
@@ -163,7 +165,7 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
             .strip_prefix("/echo/")
             .expect("some payload should exist");
 
-        Response::new(&mut stream)
+        Response::new(&mut stream, &req)
             .status(200)
             .header("Content-Type", "text/plain")
             .body(payload)
@@ -171,7 +173,7 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
             .await?;
     } else if req.path.starts_with("/files/") {
         if config.static_files.is_none() {
-            return Response::new(&mut stream).status(404).send().await;
+            return Response::new(&mut stream, &req).status(404).send().await;
         }
         let entity = req
             .path
@@ -184,11 +186,11 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
         );
         if req.method == Method::Get {
             if !tokio::fs::try_exists(&fpath).await? {
-                return Response::new(&mut stream).status(404).send().await;
+                return Response::new(&mut stream, &req).status(404).send().await;
             }
             match tokio::fs::read_to_string(&fpath).await {
                 Ok(body) => {
-                    return Response::new(&mut stream)
+                    return Response::new(&mut stream, &req)
                         .status(200)
                         .header("Content-Type", "application/octet-stream")
                         .body(&body)
@@ -196,7 +198,7 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
                         .await;
                 }
                 Err(err) => {
-                    return Response::new(&mut stream)
+                    return Response::new(&mut stream, &req)
                         .status(500)
                         .body(format!("failed to read file: {err}").as_str())
                         .send()
@@ -204,13 +206,13 @@ async fn handle_connection(mut stream: TcpStream, config: Config) -> anyhow::Res
                 }
             }
         } else if req.method == Method::Post {
-            tokio::fs::write(fpath, req.body).await?;
-            return Response::new(&mut stream).status(201).send().await;
+            tokio::fs::write(fpath, &req.body).await?;
+            return Response::new(&mut stream, &req).status(201).send().await;
         } else {
-            return Response::new(&mut stream).status(400).send().await;
+            return Response::new(&mut stream, &req).status(400).send().await;
         }
     } else {
-        Response::new(&mut stream).status(404).send().await?;
+        Response::new(&mut stream, &req).status(404).send().await?;
     }
 
     Ok(())
