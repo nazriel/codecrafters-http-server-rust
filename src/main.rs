@@ -1,4 +1,7 @@
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use itertools::Itertools;
+use std::io::Write;
 use std::{collections::HashMap, env, path::PathBuf};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -139,10 +142,11 @@ impl<'a> Response<'a> {
         }
 
         if !self.body.is_empty() {
+            let body = self.build_body();
             self.stream
-                .write_all(format!("Content-Length: {}\r\n\r\n", self.body.len()).as_bytes())
+                .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
                 .await?;
-            self.stream.write_all(self.body.as_bytes()).await?;
+            self.stream.write_all(&body).await?;
         } else {
             self.stream.write_all(b"Content-Length: 0\r\n\r\n").await?;
         }
@@ -155,6 +159,15 @@ impl<'a> Response<'a> {
                 .entry("Content-Encoding".into())
                 .or_insert("gzip".into());
         }
+    }
+
+    fn build_body(&self) -> Vec<u8> {
+        if self.request.supported_encodings().contains(&"gzip") {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(self.body.as_bytes()).unwrap();
+            return encoder.finish().unwrap();
+        }
+        self.body.as_bytes().to_vec()
     }
 }
 
